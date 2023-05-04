@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/grafana/tanka/pkg/jsonnet/jpath"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,8 +32,9 @@ func findImportersTestCases(t testing.TB) []findImportersTestCase {
 
 	return []findImportersTestCase{
 		{
-			name:  "no files",
-			files: []string{},
+			name:              "no files",
+			files:             []string{},
+			expectedImporters: nil,
 		},
 		{
 			name:        "invalid file",
@@ -118,6 +120,13 @@ func findImportersTestCases(t testing.TB) []findImportersTestCase {
 				absPath(t, "testdata/findImporters/environments/relative-import/main.jsonnet"),
 			},
 		},
+		{
+			name:  "imported file in lib relative to env",
+			files: []string{"testdata/findImporters/environments/lib-import-relative-to-env/file-to-import.libsonnet"},
+			expectedImporters: []string{
+				absPath(t, "testdata/findImporters/environments/lib-import-relative-to-env/folder1/folder2/main.jsonnet"),
+			},
+		},
 	}
 }
 
@@ -129,6 +138,10 @@ func TestFindImportersForFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	for _, file := range files {
+		// Skip non-main files
+		if filepath.Base(file) != jpath.DefaultEntrypoint {
+			continue
+		}
 		_, err := EvaluateFile(file, Opts{})
 		require.NoError(t, err, "failed to eval %s", file)
 	}
@@ -142,7 +155,8 @@ func TestFindImportersForFiles(t *testing.T) {
 
 func BenchmarkFindImporters(b *testing.B) {
 	// Create a very large and complex project
-	tempDir := b.TempDir()
+	tempDir, err := filepath.EvalSymlinks(b.TempDir())
+	require.NoError(b, err)
 	generateTestProject(b, tempDir, 100, false)
 
 	// Run the benchmark
